@@ -37,8 +37,7 @@ class GitTimeoutError(GitRunnerError):
         command_text = " ".join(command)
 
         super().__init__(
-            f"Git command '{command_text}' timed out after "
-            f"{timeout_seconds:g} seconds in '{cwd}'."
+            f"Git command '{command_text}' timed out after {timeout_seconds:g} seconds in '{cwd}'."
         )
 
 
