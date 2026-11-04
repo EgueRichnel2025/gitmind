@@ -177,3 +177,16 @@ def test_git_status_parse_error_has_informative_message() -> None:
     assert "Unable to parse Git status output" in str(error)
     assert "Missing filename" in str(error)
     assert "M " in str(error)
+
+
+def test_git_repository_not_found_error_preserves_path() -> None:
+    from pathlib import Path
+
+    from gitmind.core.git.errors import GitRepositoryNotFoundError
+
+    path = Path("/project")
+    error = GitRepositoryNotFoundError(path)
+
+    assert isinstance(error, GitRunnerError)
+    assert error.path == path
+    assert "/project" in str(error)

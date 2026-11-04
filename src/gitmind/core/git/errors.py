@@ -79,3 +79,12 @@ class GitStatusParseError(GitRunnerError):
             message = f"{message} Entry: {entry!r}"
 
         super().__init__(message)
+
+
+class GitRepositoryNotFoundError(GitRunnerError):
+    """Raised when no Git repository is found for the requested directory."""
+
+    def __init__(self, path: Path) -> None:
+        self.path = path
+
+        super().__init__(f"No Git repository found at or above '{path}'.")
