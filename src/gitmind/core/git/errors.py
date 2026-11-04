@@ -64,3 +64,18 @@ class GitCommandError(GitRunnerError):
             message = f"{message}\n{details}"
 
         super().__init__(message)
+
+
+class GitStatusParseError(GitRunnerError):
+    """Raised when Git status output cannot be parsed."""
+
+    def __init__(self, reason: str, entry: str | None = None) -> None:
+        self.reason = reason
+        self.entry = entry
+
+        message = f"Unable to parse Git status output: {reason}"
+
+        if entry is not None:
+            message = f"{message} Entry: {entry!r}"
+
+        super().__init__(message)

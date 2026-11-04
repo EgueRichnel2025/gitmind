@@ -143,3 +143,37 @@ def test_git_command_error_has_informative_message() -> None:
     assert "128" in message
     assert str(Path("/project")) in message
     assert "fatal: not a git repository" in message
+
+
+def test_git_status_parse_error_inherits_from_git_runner_error() -> None:
+    from gitmind.core.git.errors import GitStatusParseError
+
+    error = GitStatusParseError("Invalid status entry")
+
+    assert isinstance(error, GitRunnerError)
+    assert isinstance(error, RuntimeError)
+
+
+def test_git_status_parse_error_preserves_details() -> None:
+    from gitmind.core.git.errors import GitStatusParseError
+
+    error = GitStatusParseError(
+        reason="Invalid status entry",
+        entry="invalid-record",
+    )
+
+    assert error.reason == "Invalid status entry"
+    assert error.entry == "invalid-record"
+
+
+def test_git_status_parse_error_has_informative_message() -> None:
+    from gitmind.core.git.errors import GitStatusParseError
+
+    error = GitStatusParseError(
+        reason="Missing filename",
+        entry="M ",
+    )
+
+    assert "Unable to parse Git status output" in str(error)
+    assert "Missing filename" in str(error)
+    assert "M " in str(error)
