@@ -73,3 +73,73 @@ def test_git_timeout_error_has_informative_message() -> None:
     assert "git status --short" in str(error)
     assert "3.5 seconds" in str(error)
     assert str(Path("/project")) in str(error)
+
+
+def test_git_command_error_inherits_from_git_runner_error() -> None:
+    from pathlib import Path
+
+    from gitmind.core.git.errors import GitCommandError
+    from gitmind.core.git.models import GitCommandResult
+
+    result = GitCommandResult(
+        args=("status",),
+        cwd=Path("/project"),
+        returncode=128,
+        stdout="",
+        stderr="fatal: not a git repository",
+        duration_seconds=0.03,
+    )
+
+    error = GitCommandError(result)
+
+    assert isinstance(error, GitRunnerError)
+    assert isinstance(error, RuntimeError)
+
+
+def test_git_command_error_preserves_execution_metadata() -> None:
+    from pathlib import Path
+
+    from gitmind.core.git.errors import GitCommandError
+    from gitmind.core.git.models import GitCommandResult
+
+    result = GitCommandResult(
+        args=("diff", "--cached"),
+        cwd=Path("/project"),
+        returncode=1,
+        stdout="",
+        stderr="permission denied",
+        duration_seconds=0.05,
+    )
+
+    error = GitCommandError(result)
+
+    assert error.result is result
+    assert error.command == ("diff", "--cached")
+    assert error.cwd == Path("/project")
+    assert error.returncode == 1
+    assert error.stdout == ""
+    assert error.stderr == "permission denied"
+
+
+def test_git_command_error_has_informative_message() -> None:
+    from pathlib import Path
+
+    from gitmind.core.git.errors import GitCommandError
+    from gitmind.core.git.models import GitCommandResult
+
+    result = GitCommandResult(
+        args=("status",),
+        cwd=Path("/project"),
+        returncode=128,
+        stdout="",
+        stderr="fatal: not a git repository",
+        duration_seconds=0.02,
+    )
+
+    error = GitCommandError(result)
+    message = str(error)
+
+    assert "git status" in message
+    assert "128" in message
+    assert str(Path("/project")) in message
+    assert "fatal: not a git repository" in message

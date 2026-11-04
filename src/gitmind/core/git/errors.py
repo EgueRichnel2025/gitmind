@@ -2,6 +2,8 @@
 
 from pathlib import Path
 
+from gitmind.core.git.models import GitCommandResult
+
 
 class GitRunnerError(RuntimeError):
     """Base exception for Git runner errors."""
@@ -35,5 +37,31 @@ class GitTimeoutError(GitRunnerError):
         command_text = " ".join(command)
 
         super().__init__(
-            f"Git command '{command_text}' timed out after {timeout_seconds:g} seconds in '{cwd}'."
+            f"Git command '{command_text}' timed out after "
+            f"{timeout_seconds:g} seconds in '{cwd}'."
         )
+
+
+class GitCommandError(GitRunnerError):
+    """Raised when a Git command returns a non-zero exit code."""
+
+    def __init__(self, result: GitCommandResult) -> None:
+        self.result = result
+        self.command = result.args
+        self.cwd = result.cwd
+        self.returncode = result.returncode
+        self.stdout = result.stdout
+        self.stderr = result.stderr
+
+        command_text = " ".join(result.args)
+        details = result.stderr.strip() or result.stdout.strip()
+
+        message = (
+            f"Git command 'git {command_text}' failed with exit code "
+            f"{result.returncode} in '{result.cwd}'."
+        )
+
+        if details:
+            message = f"{message}\n{details}"
+
+        super().__init__(message)
