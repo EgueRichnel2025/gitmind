@@ -189,4 +189,4 @@ def test_git_repository_not_found_error_preserves_path() -> None:
 
     assert isinstance(error, GitRunnerError)
     assert error.path == path
-    assert "/project" in str(error)
+    assert str(Path("/project")) in str(error)
