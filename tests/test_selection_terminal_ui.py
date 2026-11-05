@@ -1,6 +1,7 @@
-"""Tests for the interactive file selection terminal interface."""
+"""Tests for the Questionary-based file selection interface."""
 
 from io import StringIO
+from unittest.mock import Mock
 
 import pytest
 from rich.console import Console
@@ -11,98 +12,101 @@ from gitmind.core.selection.service import FileSelectionService
 from gitmind.ui.selection import SelectionTerminalUI
 
 
-def make_service(page_size: int = 2) -> FileSelectionService:
-    """Create a selection service containing five files."""
-    files = tuple(
-        GitFileStatus(
-            path=path,
-            index_status=" ",
-            worktree_status="M",
-        )
-        for path in (
-            "src/auth.py",
-            "src/main.py",
-            "src/config.py",
-            "tests/test_auth.py",
-            "tests/test_main.py",
-        )
+def make_service() -> FileSelectionService:
+    """Create a selection service containing three files."""
+    files = (
+        GitFileStatus("src/auth.py", " ", "M"),
+        GitFileStatus("src/main.py", " ", "M"),
+        GitFileStatus("README.md", "?", "?"),
     )
 
-    return FileSelectionService(
-        GitStatusSnapshot(files=files),
-        page_size=page_size,
-    )
+    return FileSelectionService(GitStatusSnapshot(files=files))
 
 
 def make_ui(
     service: FileSelectionService,
-    actions: list[str],
-    output: StringIO | None = None,
-) -> tuple[SelectionTerminalUI, StringIO]:
-    """Create a terminal UI with simulated user input."""
-    output = output if output is not None else StringIO()
-    console = Console(
-        file=output,
-        force_terminal=False,
-        color_system=None,
-        width=120,
-    )
+    answer: list[str] | None,
+) -> tuple[SelectionTerminalUI, StringIO, Mock]:
+    """Create a UI with a simulated Questionary response."""
+    output = StringIO()
+    console = Console(file=output, force_terminal=False, color_system=None)
 
-    action_iterator = iter(actions)
+    checkbox_prompt = Mock()
+    checkbox_prompt.return_value.ask.return_value = answer
 
-    def provide_input(_prompt: str) -> str:
-        return next(action_iterator)
-
-    return SelectionTerminalUI(
+    ui = SelectionTerminalUI(
         service=service,
         console=console,
-        input_provider=provide_input,
-    ), output
+        checkbox_prompt=checkbox_prompt,
+    )
+
+    return ui, output, checkbox_prompt
 
 
-def test_ui_renders_files_and_confirms_selection() -> None:
+def test_ui_builds_checkbox_choices_for_all_files() -> None:
     service = make_service()
-    ui, output = make_ui(service, ["1", ""])
+    ui, output, prompt = make_ui(service, ["src/auth.py"])
 
     result = ui.run()
 
     assert isinstance(result, FileSelectionSnapshot)
     assert result.selected_paths == ("src/auth.py",)
 
-    rendered = output.getvalue()
+    choices = prompt.call_args.kwargs["choices"]
 
-    assert "GitMind" in rendered
-    assert "src/auth.py" in rendered
-    assert "src/main.py" in rendered
-    assert "Selected: 0" in rendered
+    assert [choice.value for choice in choices] == [
+        "src/auth.py",
+        "src/main.py",
+        "README.md",
+    ]
+    assert "[MODIFIED · UNSTAGED]" in choices[0].title
+    assert "[UNTRACKED]" in choices[2].title
+    assert "GitMind" in output.getvalue()
 
 
-def test_ui_preserves_selection_across_pages() -> None:
+def test_ui_configures_arrow_keys_space_and_selection_shortcuts() -> None:
     service = make_service()
-    ui, _ = make_ui(service, ["1", "n", "1", "p", ""])
+    ui, _, prompt = make_ui(service, [])
+
+    ui.run()
+
+    options = prompt.call_args.kwargs
+
+    assert options["use_arrow_keys"] is True
+    assert options["use_jk_keys"] is False
+    assert options["use_emacs_keys"] is False
+    assert "Space Select" in options["instruction"]
+    assert "A Select all" in options["instruction"]
+    assert "I Invert" in options["instruction"]
+
+
+def test_ui_replaces_previous_selection_with_confirmed_choices() -> None:
+    service = make_service()
+    service.select("src/auth.py")
+
+    ui, _, _ = make_ui(service, ["src/main.py", "README.md"])
 
     result = ui.run()
 
     assert isinstance(result, FileSelectionSnapshot)
-    assert result.selected_paths == ("src/auth.py", "src/config.py")
+    assert result.selected_paths == ("src/main.py", "README.md")
 
 
-def test_ui_select_all_affects_every_page() -> None:
+def test_ui_preserves_original_file_order() -> None:
     service = make_service()
-    ui, _ = make_ui(service, ["a", ""])
+
+    ui, _, _ = make_ui(service, ["README.md", "src/auth.py"])
 
     result = ui.run()
 
     assert isinstance(result, FileSelectionSnapshot)
-    assert result.selected_count == 5
-    assert result.all_selected
+    assert result.selected_paths == ("src/auth.py", "README.md")
 
 
-def test_ui_deselect_all_affects_every_page() -> None:
+def test_ui_accepts_empty_selection() -> None:
     service = make_service()
-    service.select_all()
 
-    ui, _ = make_ui(service, ["d", ""])
+    ui, _, _ = make_ui(service, [])
 
     result = ui.run()
 
@@ -110,91 +114,65 @@ def test_ui_deselect_all_affects_every_page() -> None:
     assert result.selected_count == 0
 
 
-def test_ui_cancel_returns_none_without_changing_selection() -> None:
+def test_ui_cancellation_returns_none_and_preserves_selection() -> None:
     service = make_service()
     service.select("src/auth.py")
 
-    ui, output = make_ui(service, ["q"])
+    ui, _, _ = make_ui(service, None)
 
     result = ui.run()
 
     assert result is None
     assert service.get_selection().selected_paths == ("src/auth.py",)
-    assert "Selection cancelled." in output.getvalue()
 
 
-def test_ui_rejects_invalid_file_number_without_changing_selection() -> None:
+def test_ui_handles_keyboard_interrupt() -> None:
     service = make_service()
-    ui, output = make_ui(service, ["9", ""])
+    ui, _, prompt = make_ui(service, [])
 
-    result = ui.run()
-
-    assert isinstance(result, FileSelectionSnapshot)
-    assert result.selected_count == 0
-    assert "Invalid file number" in output.getvalue()
-
-
-def test_ui_reports_unknown_command() -> None:
-    service = make_service()
-    ui, output = make_ui(service, ["invalid", ""])
-
-    ui.run()
-
-    assert "Unknown command" in output.getvalue()
-
-
-def test_ui_reports_navigation_boundaries() -> None:
-    service = make_service()
-    ui, output = make_ui(service, ["p", "n", "n", "n", ""])
-
-    ui.run()
-
-    rendered = output.getvalue()
-
-    assert "first page" in rendered
-    assert "last page" in rendered
-
-
-def test_ui_cancels_on_end_of_input() -> None:
-    service = make_service()
-    output = StringIO()
-    console = Console(file=output, force_terminal=False, color_system=None)
-
-    def end_of_input(_prompt: str) -> str:
-        raise EOFError
-
-    ui = SelectionTerminalUI(
-        service=service,
-        console=console,
-        input_provider=end_of_input,
-    )
+    prompt.return_value.ask.side_effect = KeyboardInterrupt
 
     assert ui.run() is None
-    assert "Selection cancelled." in output.getvalue()
 
 
-def test_ui_supports_empty_snapshot() -> None:
+def test_ui_handles_end_of_input() -> None:
+    service = make_service()
+    ui, _, prompt = make_ui(service, [])
+
+    prompt.return_value.ask.side_effect = EOFError
+
+    assert ui.run() is None
+
+
+def test_ui_rejects_unknown_paths_from_prompt() -> None:
+    service = make_service()
+    ui, _, _ = make_ui(service, ["missing.py"])
+
+    with pytest.raises(ValueError, match="Unknown selected file paths"):
+        ui.run()
+
+
+def test_ui_rejects_invalid_prompt_result() -> None:
+    service = make_service()
+    ui, _, prompt = make_ui(service, [])
+
+    prompt.return_value.ask.return_value = "src/auth.py"
+
+    with pytest.raises(TypeError, match="list of file paths"):
+        ui.run()
+
+
+def test_ui_returns_empty_snapshot_without_opening_prompt() -> None:
     service = FileSelectionService(GitStatusSnapshot(files=()))
-    ui, output = make_ui(service, [""])
+    ui, _, prompt = make_ui(service, [])
 
     result = ui.run()
 
     assert isinstance(result, FileSelectionSnapshot)
     assert result.total_count == 0
-    assert result.selected_count == 0
-    assert "Files: 0" in output.getvalue()
+    prompt.assert_not_called()
 
 
 def test_ui_rejects_invalid_service() -> None:
     with pytest.raises(TypeError, match="FileSelectionService"):
         SelectionTerminalUI(None)  # type: ignore[arg-type]
-
-
-def test_ui_returns_empty_snapshot_when_user_confirms_without_selection() -> None:
-    service = make_service()
-    ui, _ = make_ui(service, [""])
-
-    result = ui.run()
-
-    assert isinstance(result, FileSelectionSnapshot)
-    assert result.selected_count == 0
