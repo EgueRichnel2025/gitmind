@@ -105,9 +105,7 @@ class FileSelectionPager:
         )
 
         if not 1 <= page_number <= total_pages:
-            raise ValueError(
-                f"page_number must be between 1 and {total_pages}."
-            )
+            raise ValueError(f"page_number must be between 1 and {total_pages}.")
 
         self._current_page_number = page_number
 

@@ -3,8 +3,8 @@
 import pytest
 
 from gitmind.core.git.status_models import GitFileStatus, GitStatusSnapshot
-from gitmind.core.selection.selector import FileSelector
 from gitmind.core.selection.pagination import FileSelectionPager
+from gitmind.core.selection.selector import FileSelector
 
 
 def make_selector(*paths: str) -> FileSelector:
