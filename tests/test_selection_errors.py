@@ -1,7 +1,5 @@
 """Tests for file selection exceptions."""
 
-import pytest
-
 from gitmind.core.selection.errors import (
     FileNotFoundInSelectionError,
     FileSelectionError,
