@@ -6,6 +6,7 @@ from gitmind.core.analysis.content import (
     UnsafeFilePathError,
     WorkingTreeContentReader,
 )
+from gitmind.core.analysis.diff_models import FileDiff
 from gitmind.core.analysis.models import (
     FileAnalysis,
     FileAnalysisSnapshot,
@@ -16,6 +17,7 @@ __all__ = [
     "FileAnalysisSnapshot",
     "FileContent",
     "FileContentReadError",
+    "FileDiff",
     "UnsafeFilePathError",
     "WorkingTreeContentReader",
 ]
