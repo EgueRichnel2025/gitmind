@@ -12,9 +12,11 @@ from gitmind.core.analysis.models import (
     FileAnalysis,
     FileAnalysisSnapshot,
 )
+from gitmind.core.analysis.service import FileAnalysisService
 
 __all__ = [
     "FileAnalysis",
+    "FileAnalysisService",
     "FileAnalysisSnapshot",
     "FileContent",
     "FileContentReadError",
