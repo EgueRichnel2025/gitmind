@@ -57,9 +57,7 @@ class FileAnalysis:
             raise ValueError("Truncated content must not be None.")
 
         if self.size_bytes is not None:
-            if isinstance(self.size_bytes, bool) or not isinstance(
-                self.size_bytes, int
-            ):
+            if isinstance(self.size_bytes, bool) or not isinstance(self.size_bytes, int):
                 raise TypeError("size_bytes must be an integer or None.")
 
             if self.size_bytes < 0:
