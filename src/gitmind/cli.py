@@ -5,9 +5,16 @@ from pathlib import Path
 import typer
 from rich.console import Console
 from rich.panel import Panel
+from rich.table import Table
 from rich.text import Text
 
 from gitmind import __version__
+from gitmind.core.analysis.content import (
+    FileContentReadError,
+    UnsafeFilePathError,
+)
+from gitmind.core.analysis.models import FileAnalysisSnapshot
+from gitmind.core.analysis.service import FileAnalysisService
 from gitmind.core.git.errors import GitRepositoryNotFoundError, GitRunnerError
 from gitmind.core.git.repository import RepositoryDetector
 from gitmind.core.git.runner import GitRunner
@@ -25,8 +32,40 @@ app = typer.Typer(
 )
 
 
+def display_analysis_summary(
+    console: Console,
+    snapshot: FileAnalysisSnapshot,
+) -> None:
+    """Display a summary of the selected files analysis."""
+    table = Table.grid(padding=(0, 3))
+    table.add_column(style="bold")
+    table.add_column(justify="right")
+
+    table.add_row("Files analyzed", str(snapshot.file_count))
+    table.add_row("Files with staged changes", str(snapshot.staged_diff_count))
+    table.add_row("Files with unstaged changes", str(snapshot.unstaged_diff_count))
+    table.add_row("Binary files", str(snapshot.binary_count))
+    table.add_row("Truncated contents", str(snapshot.content_truncated_count))
+    table.add_row("Truncated diffs", str(snapshot.diff_truncated_count))
+
+    console.print(
+        Panel(
+            table,
+            title="GitMind | Analysis completed",
+            border_style="green",
+            expand=False,
+        )
+    )
+
+    if snapshot.files:
+        console.print("[bold]Analyzed files:[/bold]")
+
+        for file_analysis in snapshot.files:
+            console.print(f"  [dim]• {file_analysis.path}[/dim]")
+
+
 def run_selection_workflow() -> None:
-    """Detect repository changes and launch interactive file selection."""
+    """Detect repository changes, select files and analyze them."""
     console = Console()
     runner = GitRunner()
 
@@ -100,12 +139,32 @@ def run_selection_workflow() -> None:
     console.print(
         Panel.fit(
             f"[bold green]Selection confirmed: {count} {label}.[/bold green]\n"
-            "The selected files are ready for analysis.\n"
-            "[dim]No Git staging or commit operation was performed.[/dim]",
+            "Starting read-only file analysis.\n"
+            "[dim]No Git staging or commit operation will be performed.[/dim]",
             title="GitMind",
             border_style="green",
         )
     )
+
+    try:
+        analysis = FileAnalysisService(
+            repository_root=repository.root,
+        ).analyze(selection)
+
+    except (
+        GitRunnerError,
+        FileContentReadError,
+        UnsafeFilePathError,
+    ) as error:
+        console.print(
+            Text(
+                f"Unable to analyze selected files: {error}",
+                style="bold red",
+            )
+        )
+        raise typer.Exit(code=1) from error
+
+    display_analysis_summary(console, analysis)
 
 
 @app.callback()
