@@ -15,6 +15,7 @@ from gitmind.core.ai.models import (
     CommitSuggestion,
     CommitSuggestionSet,
 )
+from gitmind.core.ai.provider import OpenAICompatibleProvider
 
 __all__ = [
     "AIAuthenticationError",
@@ -22,10 +23,11 @@ __all__ = [
     "AIConnectionError",
     "AIProviderConfig",
     "AIProviderError",
+    "AIRateLimitError",
     "AIRequestError",
     "AIResponseError",
-    "AIRateLimitError",
     "AITimeoutError",
     "CommitSuggestion",
     "CommitSuggestionSet",
+    "OpenAICompatibleProvider",
 ]
