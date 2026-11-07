@@ -38,6 +38,17 @@ _EXPORTS = {
         "commit_errors",
         "UnsafeGitCommitPathError",
     ),
+    "GitPushDetachedHeadError": (
+        "push_errors",
+        "GitPushDetachedHeadError",
+    ),
+    "GitPushError": ("push_errors", "GitPushError"),
+    "GitPushRemoteNotFoundError": (
+        "push_errors",
+        "GitPushRemoteNotFoundError",
+    ),
+    "GitPushResult": ("push_models", "GitPushResult"),
+    "GitPushService": ("push", "GitPushService"),
     "UnsafeGitPathError": ("staging_errors", "UnsafeGitPathError"),
 }
 
