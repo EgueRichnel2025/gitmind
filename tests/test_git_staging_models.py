@@ -95,3 +95,19 @@ def test_unsafe_path_error_preserves_details() -> None:
     assert error.path == "../outside.txt"
     assert error.reason == "Path traversal is not allowed."
     assert "../outside.txt" in str(error)
+
+
+def test_git_package_exports_staging_api() -> None:
+    from gitmind.core.git import (
+        EmptyGitStagingSelectionError,
+        GitStagingError,
+        GitStagingResult,
+        GitStagingService,
+        UnsafeGitPathError,
+    )
+
+    assert GitStagingService is not None
+    assert GitStagingResult is not None
+    assert GitStagingError is not None
+    assert EmptyGitStagingSelectionError is not None
+    assert UnsafeGitPathError is not None
