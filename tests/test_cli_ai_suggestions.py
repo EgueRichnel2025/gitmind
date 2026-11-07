@@ -26,6 +26,11 @@ def confirm_staging_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
         "run",
         lambda self: True,
     )
+    monkeypatch.setattr(
+        cli_module.CommitConfirmationTerminalUI,
+        "run",
+        lambda self: False,
+    )
 
 
 SUGGESTIONS = [
@@ -43,6 +48,40 @@ def initialize_repository(path: Path) -> None:
         check=True,
         capture_output=True,
         text=True,
+    )
+
+
+def run_git(path: Path, *args: str) -> str:
+    """Execute Git in a temporary repository."""
+    result = subprocess.run(
+        ["git", *args],
+        cwd=path,
+        check=True,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    return result.stdout
+
+
+def initialize_committable_repository(path: Path) -> None:
+    """Initialize a repository with a committed README file."""
+    initialize_repository(path)
+
+    run_git(path, "config", "user.name", "GitMind CLI Tests")
+    run_git(path, "config", "user.email", "gitmind-cli@example.com")
+
+    (path / "README.md").write_text(
+        "# Initial documentation\\n",
+        encoding="utf-8",
+    )
+
+    run_git(path, "add", "README.md")
+    run_git(path, "commit", "--quiet", "-m", "initial commit")
+
+    (path / "README.md").write_text(
+        "# Updated documentation\\n",
+        encoding="utf-8",
     )
 
 
@@ -225,3 +264,153 @@ def test_cli_handles_ai_provider_errors(
     assert "No commit was created" in result.output
 
     assert "A  README.md" in get_git_status(tmp_path)
+
+
+def test_cli_creates_commit_after_explicit_confirmation(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    initialize_committable_repository(tmp_path)
+
+    monkeypatch.chdir(tmp_path)
+
+    monkeypatch.setattr(
+        SelectionTerminalUI,
+        "run",
+        select_first_file,
+    )
+
+    class FakeProvider:
+        def __init__(self, config) -> None:
+            pass
+
+        def generate(self, system_prompt: str, user_prompt: str) -> str:
+            return json.dumps({"suggestions": SUGGESTIONS})
+
+    class FakeSuggestionUI:
+        def __init__(self, suggestions, console) -> None:
+            self.suggestions = suggestions
+
+        def run(self) -> str:
+            return self.suggestions.messages[0]
+
+    configure_fake_ai(monkeypatch, FakeProvider)
+
+    monkeypatch.setattr(
+        cli_module,
+        "CommitSuggestionTerminalUI",
+        FakeSuggestionUI,
+    )
+
+    monkeypatch.setattr(
+        cli_module.CommitConfirmationTerminalUI,
+        "run",
+        lambda self: True,
+    )
+
+    result = runner.invoke(cli_module.app)
+
+    assert result.exit_code == 0, result.output
+    assert "Commit Completed" in result.output
+    assert SUGGESTIONS[0] in result.output
+
+    assert (
+        run_git(
+            tmp_path,
+            "log",
+            "-1",
+            "--pretty=%s",
+        ).strip()
+        == SUGGESTIONS[0]
+    )
+
+    assert (
+        run_git(
+            tmp_path,
+            "show",
+            "HEAD:README.md",
+        )
+        == "# Updated documentation\\n"
+    )
+
+    assert get_git_status(tmp_path) == ""
+
+
+def test_cli_declining_commit_preserves_staged_changes(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    initialize_committable_repository(tmp_path)
+
+    monkeypatch.chdir(tmp_path)
+
+    monkeypatch.setattr(
+        SelectionTerminalUI,
+        "run",
+        select_first_file,
+    )
+
+    class FakeProvider:
+        def __init__(self, config) -> None:
+            pass
+
+        def generate(self, system_prompt: str, user_prompt: str) -> str:
+            return json.dumps({"suggestions": SUGGESTIONS})
+
+    class FakeSuggestionUI:
+        def __init__(self, suggestions, console) -> None:
+            self.suggestions = suggestions
+
+        def run(self) -> str:
+            return self.suggestions.messages[0]
+
+    class UnexpectedCommitService:
+        def __init__(self, *args, **kwargs) -> None:
+            raise AssertionError(
+                "GitCommitService must not be called after declining confirmation."
+            )
+
+    configure_fake_ai(monkeypatch, FakeProvider)
+
+    monkeypatch.setattr(
+        cli_module,
+        "CommitSuggestionTerminalUI",
+        FakeSuggestionUI,
+    )
+
+    monkeypatch.setattr(
+        cli_module.CommitConfirmationTerminalUI,
+        "run",
+        lambda self: False,
+    )
+
+    monkeypatch.setattr(
+        cli_module,
+        "GitCommitService",
+        UnexpectedCommitService,
+    )
+
+    previous_commit = run_git(tmp_path, "rev-parse", "HEAD").strip()
+
+    result = runner.invoke(cli_module.app)
+
+    assert result.exit_code == 0, result.output
+    assert "Commit declined" in result.output
+
+    assert run_git(tmp_path, "rev-parse", "HEAD").strip() == previous_commit
+
+    assert run_git(
+        tmp_path,
+        "diff",
+        "--cached",
+        "--name-only",
+    ).splitlines() == ["README.md"]
+
+    assert (
+        run_git(
+            tmp_path,
+            "show",
+            ":README.md",
+        )
+        == "# Updated documentation\\n"
+    )
