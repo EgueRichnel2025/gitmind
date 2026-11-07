@@ -4,6 +4,7 @@ import json
 import subprocess
 from pathlib import Path
 
+import pytest
 from typer.testing import CliRunner
 
 import gitmind.cli as cli_module
@@ -15,6 +16,17 @@ from gitmind.core.ai import (
 from gitmind.ui.selection import SelectionTerminalUI
 
 runner = CliRunner()
+
+
+@pytest.fixture(autouse=True)
+def confirm_staging_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Confirm staging without opening an interactive prompt."""
+    monkeypatch.setattr(
+        cli_module.StagingConfirmationTerminalUI,
+        "run",
+        lambda self: True,
+    )
+
 
 SUGGESTIONS = [
     "docs: add project documentation",
@@ -139,7 +151,7 @@ def test_cli_generates_and_displays_three_commit_suggestions(
     assert "GitMind project documentation" in captured["user_prompt"]
 
     # The selected suggestion must never stage or commit the file.
-    assert "?? README.md" in get_git_status(tmp_path)
+    assert "A  README.md" in get_git_status(tmp_path)
 
 
 def test_cli_handles_missing_ai_configuration(
@@ -174,8 +186,8 @@ def test_cli_handles_missing_ai_configuration(
     assert result.exit_code == 0, result.output
     assert "AI Configuration" in result.output
     assert "GITMIND_AI_API_KEY" in result.output
-    assert "AI suggestions skipped" in result.output
-    assert "?? README.md" in get_git_status(tmp_path)
+    assert "Selected files remain staged" in result.output
+    assert "A  README.md" in get_git_status(tmp_path)
 
 
 def test_cli_handles_ai_provider_errors(
@@ -210,6 +222,6 @@ def test_cli_handles_ai_provider_errors(
     assert result.exit_code == 0, result.output
     assert "GitMind | AI Error" in result.output
     assert "Unable to generate commit suggestions" in result.output
-    assert "No commit message was selected" in result.output
+    assert "No commit was created" in result.output
 
-    assert "?? README.md" in get_git_status(tmp_path)
+    assert "A  README.md" in get_git_status(tmp_path)

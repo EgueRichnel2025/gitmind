@@ -19,6 +19,11 @@ def disable_live_ai_configuration(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("GITMIND_AI_API_KEY", raising=False)
     monkeypatch.delenv("GITMIND_AI_MODEL", raising=False)
     monkeypatch.delenv("GITMIND_AI_BASE_URL", raising=False)
+    monkeypatch.setattr(
+        cli_module.StagingConfirmationTerminalUI,
+        "run",
+        lambda self: True,
+    )
 
 
 def initialize_repository(path: Path) -> None:
@@ -73,12 +78,12 @@ def test_cli_analyzes_confirmed_files(
     assert "Analysis completed" in result.output
     assert "Files analyzed" in result.output
     assert "1" in result.output
-    assert "No Git staging or commit operation" in result.output
+    assert "Staging completed" in result.output
 
-    # Analysis must not stage or commit any file.
+    # Only the selected file must be staged.
     status = get_git_status(tmp_path)
 
-    assert "?? README.md" in status
+    assert "A  README.md" in status
     assert "?? app.py" in status
 
 
@@ -173,8 +178,8 @@ def test_cli_reports_analysis_errors(
     result = runner.invoke(cli_module.app)
 
     assert result.exit_code == 1
-    assert "Unable to analyze selected files" in result.output
+    assert "Unable to analyze staged changes" in result.output
     assert "simulated read failure" in result.output
 
     # An analysis error must not stage or commit anything.
-    assert "?? app.py" in get_git_status(tmp_path)
+    assert "A  app.py" in get_git_status(tmp_path)

@@ -43,11 +43,23 @@ class GitStagingService:
 
         selected_paths = selection.selected_paths
 
+        affected_paths = tuple(
+            dict.fromkeys(
+                path
+                for selectable_file in selection.selected_files
+                for path in (
+                    selectable_file.path,
+                    selectable_file.git_file.original_path,
+                )
+                if path is not None
+            )
+        )
+
         # Validate every path before executing any Git command.
-        for path in selected_paths:
+        for path in affected_paths:
             self._validate_path(path)
 
-        pathspecs = tuple(f":(literal){path}" for path in selected_paths)
+        pathspecs = tuple(f":(literal){path}" for path in affected_paths)
 
         self._runner.run(
             "add",
@@ -59,7 +71,7 @@ class GitStagingService:
 
         return GitStagingResult(
             selected_paths=selected_paths,
-            affected_paths=selected_paths,
+            affected_paths=affected_paths,
         )
 
     @staticmethod

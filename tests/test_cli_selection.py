@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
+import gitmind.cli as cli_module
 from gitmind.cli import app
 from gitmind.ui.selection import SelectionTerminalUI
 
@@ -18,6 +19,11 @@ def disable_live_ai_configuration(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("GITMIND_AI_API_KEY", raising=False)
     monkeypatch.delenv("GITMIND_AI_MODEL", raising=False)
     monkeypatch.delenv("GITMIND_AI_BASE_URL", raising=False)
+    monkeypatch.setattr(
+        cli_module.StagingConfirmationTerminalUI,
+        "run",
+        lambda self: True,
+    )
 
 
 def initialize_repository(path: Path) -> None:
@@ -78,7 +84,7 @@ def test_cli_reports_clean_repository(
     assert "No changes detected" in result.output
 
 
-def test_cli_runs_selection_without_staging_files(
+def test_cli_runs_selection_and_stages_only_selected_file(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -98,7 +104,7 @@ def test_cli_runs_selection_without_staging_files(
 
     status = get_git_status(tmp_path)
 
-    assert "?? README.md" in status
+    assert "A  README.md" in status
     assert "?? app.py" in status
 
 

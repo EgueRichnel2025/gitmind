@@ -21,16 +21,27 @@ from gitmind.core.analysis.content import (
     FileContentReadError,
     UnsafeFilePathError,
 )
-from gitmind.core.analysis.models import FileAnalysisSnapshot
+from gitmind.core.analysis.models import (
+    FileAnalysisSnapshot,
+)
 from gitmind.core.analysis.service import FileAnalysisService
 from gitmind.core.git.errors import GitRepositoryNotFoundError, GitRunnerError
 from gitmind.core.git.repository import RepositoryDetector
 from gitmind.core.git.runner import GitRunner
+from gitmind.core.git.staging import GitStagingService
+from gitmind.core.git.staging_errors import GitStagingError
+from gitmind.core.git.staging_models import GitStagingResult
+from gitmind.core.git.status_models import GitStatusSnapshot
 from gitmind.core.git.status_service import GitStatusService
 from gitmind.core.git.summary import GitStatusSummarizer
+from gitmind.core.selection.models import (
+    FileSelectionSnapshot,
+    SelectableFile,
+)
 from gitmind.core.selection.service import FileSelectionService
 from gitmind.ui.commit_suggestions import CommitSuggestionTerminalUI
 from gitmind.ui.selection import SelectionTerminalUI
+from gitmind.ui.staging_confirmation import StagingConfirmationTerminalUI
 
 app = typer.Typer(
     name="git-mind",
@@ -74,6 +85,53 @@ def display_analysis_summary(
             console.print(f"  [dim]• {file_analysis.path}[/dim]")
 
 
+def build_staged_selection(
+    status_snapshot: GitStatusSnapshot,
+    staging_result: GitStagingResult,
+) -> FileSelectionSnapshot:
+    """Build a fresh selection containing only the files staged by GitMind."""
+    selected_paths = set(staging_result.selected_paths)
+    covered_paths: set[str] = set()
+    selected_files: list[SelectableFile] = []
+
+    for git_file in status_snapshot.files:
+        file_paths = {git_file.path}
+
+        if git_file.original_path is not None:
+            file_paths.add(git_file.original_path)
+
+        matching_paths = file_paths.intersection(selected_paths)
+
+        if not matching_paths:
+            continue
+
+        if not git_file.is_staged:
+            raise GitStagingError(f"Selected file '{git_file.path}' was not staged successfully.")
+
+        if git_file.is_unstaged:
+            raise GitStagingError(
+                f"File '{git_file.path}' still has unstaged changes after staging. "
+                "Review the working tree and run GitMind again."
+            )
+
+        selected_files.append(
+            SelectableFile(
+                git_file=git_file,
+                selected=True,
+            )
+        )
+
+        covered_paths.update(matching_paths)
+
+    missing_paths = selected_paths - covered_paths
+
+    if missing_paths:
+        paths = ", ".join(sorted(missing_paths))
+        raise GitStagingError(f"Some selected files could not be found after staging: {paths}")
+
+    return FileSelectionSnapshot(files=tuple(selected_files))
+
+
 def run_commit_suggestion_workflow(
     console: Console,
     analysis: FileAnalysisSnapshot,
@@ -99,7 +157,7 @@ def run_commit_suggestion_workflow(
                 expand=False,
             )
         )
-        console.print("[yellow]AI suggestions skipped. Repository unchanged.[/yellow]")
+        console.print("[yellow]Selected files remain staged. No commit was created.[/yellow]")
         return
 
     provider = OpenAICompatibleProvider(config)
@@ -117,7 +175,7 @@ def run_commit_suggestion_workflow(
                 expand=False,
             )
         )
-        console.print("[yellow]No commit message was selected. Repository unchanged.[/yellow]")
+        console.print("[yellow]Selected files remain staged. No commit was created.[/yellow]")
         return
 
     console.print(
@@ -136,7 +194,10 @@ def run_commit_suggestion_workflow(
     selected_message = suggestion_ui.run()
 
     if selected_message is None:
-        console.print("[yellow]Suggestion selection cancelled. Repository unchanged.[/yellow]")
+        console.print(
+            "[yellow]Suggestion selection cancelled. "
+            "Selected files remain staged. No commit was created.[/yellow]"
+        )
         return
 
     console.print(
@@ -149,12 +210,12 @@ def run_commit_suggestion_workflow(
     )
 
     console.print(
-        "[dim]Message selected only. No Git staging, commit or push operation was performed.[/dim]"
+        "[dim]Message selected. Files remain staged. No commit or push was performed.[/dim]"
     )
 
 
 def run_selection_workflow() -> None:
-    """Detect repository changes, select files and analyze them."""
+    """Select files, confirm staging, analyze staged changes and suggest a commit."""
     console = Console()
     runner = GitRunner()
 
@@ -203,7 +264,6 @@ def run_selection_workflow() -> None:
         return
 
     selection_service = FileSelectionService(snapshot=snapshot)
-
     selection_ui = SelectionTerminalUI(
         service=selection_service,
         console=console,
@@ -213,13 +273,13 @@ def run_selection_workflow() -> None:
 
     if selection is None:
         if getattr(selection_ui, "quit_confirmed", False) is True:
-            console.print("[yellow]GitMind closed. Repository unchanged.[/yellow]")
+            console.print("[yellow]GitMind closed. No staging was performed.[/yellow]")
         else:
-            console.print("[yellow]Selection cancelled. Repository unchanged.[/yellow]")
+            console.print("[yellow]Selection cancelled. No staging was performed.[/yellow]")
         return
 
     if not selection.has_selection:
-        console.print("[yellow]No files selected. Nothing to analyze.[/yellow]")
+        console.print("[yellow]No files selected. Nothing to stage.[/yellow]")
         return
 
     count = selection.selected_count
@@ -228,11 +288,56 @@ def run_selection_workflow() -> None:
     console.print(
         Panel.fit(
             f"[bold green]Selection confirmed: {count} {label}.[/bold green]\n"
-            "Starting read-only file analysis.\n"
-            "Selected change context will be sent to your configured AI provider "
-            "to generate commit suggestions.\n"
-            "[dim]No Git staging or commit operation will be performed.[/dim]",
+            "GitMind will stage only the selected files after your confirmation.\n"
+            "Their staged changes will then be analyzed for commit suggestions.\n"
+            "[dim]No commit or push will be performed at this stage.[/dim]",
             title="GitMind",
+            border_style="green",
+        )
+    )
+
+    staging_ui = StagingConfirmationTerminalUI(
+        selection=selection,
+        console=console,
+    )
+
+    if not staging_ui.run():
+        console.print("[yellow]Staging declined. No files were added to the index.[/yellow]")
+        return
+
+    try:
+        staging_result = GitStagingService(
+            repository_root=repository.root,
+            runner=runner,
+        ).stage(selection)
+
+        refreshed_status = GitStatusService(
+            runner=runner,
+        ).get_status(repository.root)
+
+        staged_selection = build_staged_selection(
+            refreshed_status,
+            staging_result,
+        )
+
+    except (GitRunnerError, GitStagingError) as error:
+        console.print(
+            Panel(
+                f"Unable to stage the selected files:\n{error}\n\n"
+                "Inspect the repository status before continuing.",
+                title="GitMind | Staging Error",
+                border_style="red",
+                expand=False,
+            )
+        )
+        raise typer.Exit(code=1) from error
+
+    console.print(
+        Panel.fit(
+            f"[bold green]Staging completed: {staging_result.selected_count} "
+            f"selected files.[/bold green]\n"
+            "Only the selected paths were passed to Git.",
+            title="GitMind | Staging Completed",
             border_style="green",
         )
     )
@@ -240,7 +345,7 @@ def run_selection_workflow() -> None:
     try:
         analysis = FileAnalysisService(
             repository_root=repository.root,
-        ).analyze(selection)
+        ).analyze(staged_selection)
 
     except (
         GitRunnerError,
@@ -248,9 +353,12 @@ def run_selection_workflow() -> None:
         UnsafeFilePathError,
     ) as error:
         console.print(
-            Text(
-                f"Unable to analyze selected files: {error}",
-                style="bold red",
+            Panel(
+                f"Unable to analyze staged changes:\n{error}\n\n"
+                "The selected files remain staged. No commit was created.",
+                title="GitMind | Analysis Error",
+                border_style="red",
+                expand=False,
             )
         )
         raise typer.Exit(code=1) from error
