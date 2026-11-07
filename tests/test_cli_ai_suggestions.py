@@ -414,3 +414,171 @@ def test_cli_declining_commit_preserves_staged_changes(
         )
         == "# Updated documentation\\n"
     )
+
+
+def create_bare_remote(repository: Path) -> tuple[Path, str, str]:
+    """Create a local bare remote and publish the initial branch."""
+    branch = run_git(repository, "branch", "--show-current").strip()
+    remote = repository.parent / f"{repository.name}-origin.git"
+
+    subprocess.run(
+        ["git", "init", "--bare", "--quiet", str(remote)],
+        check=True,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+
+    run_git(repository, "remote", "add", "origin", str(remote))
+
+    run_git(
+        repository,
+        "push",
+        "--quiet",
+        "origin",
+        f"HEAD:refs/heads/{branch}",
+    )
+
+    initial_commit = subprocess.run(
+        [
+            "git",
+            "--git-dir",
+            str(remote),
+            "rev-parse",
+            f"refs/heads/{branch}",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    ).stdout.strip()
+
+    return remote, branch, initial_commit
+
+
+def get_remote_commit(remote: Path, branch: str) -> str:
+    """Return the commit stored in a branch of a bare remote."""
+    result = subprocess.run(
+        [
+            "git",
+            "--git-dir",
+            str(remote),
+            "rev-parse",
+            f"refs/heads/{branch}",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    return result.stdout.strip()
+
+
+def test_cli_pushes_commit_after_explicit_push_confirmation(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    initialize_committable_repository(tmp_path)
+    remote, branch, initial_commit = create_bare_remote(tmp_path)
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(SelectionTerminalUI, "run", select_first_file)
+
+    class FakeProvider:
+        def __init__(self, config) -> None:
+            pass
+
+        def generate(self, system_prompt: str, user_prompt: str) -> str:
+            return json.dumps({"suggestions": SUGGESTIONS})
+
+    class FakeSuggestionUI:
+        def __init__(self, suggestions, console) -> None:
+            self.suggestions = suggestions
+
+        def run(self) -> str:
+            return self.suggestions.messages[0]
+
+    configure_fake_ai(monkeypatch, FakeProvider)
+
+    monkeypatch.setattr(
+        cli_module,
+        "CommitSuggestionTerminalUI",
+        FakeSuggestionUI,
+    )
+    monkeypatch.setattr(
+        cli_module.CommitConfirmationTerminalUI,
+        "run",
+        lambda self: True,
+    )
+    monkeypatch.setattr(
+        cli_module.PushConfirmationTerminalUI,
+        "run",
+        lambda self: True,
+    )
+
+    result = runner.invoke(cli_module.app)
+
+    assert result.exit_code == 0, result.output
+    assert "Commit Completed" in result.output
+    assert "Push Completed" in result.output
+
+    local_commit = run_git(tmp_path, "rev-parse", "HEAD").strip()
+
+    assert local_commit != initial_commit
+    assert get_remote_commit(remote, branch) == local_commit
+    assert get_git_status(tmp_path) == ""
+
+
+def test_cli_declining_push_keeps_commit_local(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    initialize_committable_repository(tmp_path)
+    remote, branch, initial_commit = create_bare_remote(tmp_path)
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(SelectionTerminalUI, "run", select_first_file)
+
+    class FakeProvider:
+        def __init__(self, config) -> None:
+            pass
+
+        def generate(self, system_prompt: str, user_prompt: str) -> str:
+            return json.dumps({"suggestions": SUGGESTIONS})
+
+    class FakeSuggestionUI:
+        def __init__(self, suggestions, console) -> None:
+            self.suggestions = suggestions
+
+        def run(self) -> str:
+            return self.suggestions.messages[0]
+
+    configure_fake_ai(monkeypatch, FakeProvider)
+
+    monkeypatch.setattr(
+        cli_module,
+        "CommitSuggestionTerminalUI",
+        FakeSuggestionUI,
+    )
+    monkeypatch.setattr(
+        cli_module.CommitConfirmationTerminalUI,
+        "run",
+        lambda self: True,
+    )
+    monkeypatch.setattr(
+        cli_module.PushConfirmationTerminalUI,
+        "run",
+        lambda self: False,
+    )
+
+    result = runner.invoke(cli_module.app)
+
+    assert result.exit_code == 0, result.output
+    assert "Commit Completed" in result.output
+    assert "Push declined" in result.output
+
+    local_commit = run_git(tmp_path, "rev-parse", "HEAD").strip()
+
+    assert local_commit != initial_commit
+    assert get_remote_commit(remote, branch) == initial_commit
+    assert get_git_status(tmp_path) == ""
