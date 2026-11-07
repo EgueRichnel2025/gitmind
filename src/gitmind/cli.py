@@ -242,7 +242,7 @@ def run_commit_suggestion_workflow(
     except (GitCommitError, GitRunnerError) as error:
         console.print(
             Panel(
-                f"Unable to create the commit:\\n{error}\\n\\n"
+                f"Unable to create the commit:\n{error}\n\n"
                 "Inspect the repository status before continuing.",
                 title="GitMind | Commit Error",
                 border_style="red",
@@ -256,16 +256,16 @@ def run_commit_suggestion_workflow(
         return
 
     commit_summary = Text()
-    commit_summary.append("Commit created successfully.\\n\\n", style="bold green")
+    commit_summary.append("Commit created successfully.\n\n", style="bold green")
     commit_summary.append("Commit: ", style="bold")
-    commit_summary.append(f"{commit_result.commit_hash[:12]}\\n", style="cyan")
+    commit_summary.append(f"{commit_result.commit_hash[:12]}\n", style="cyan")
     commit_summary.append("Message: ", style="bold")
-    commit_summary.append(f"{commit_result.message}\\n\\n")
-    commit_summary.append("Committed files:\\n", style="bold")
+    commit_summary.append(f"{commit_result.message}\n\n")
+    commit_summary.append("Committed files:\n", style="bold")
 
     for committed_path in commit_result.committed_paths:
         commit_summary.append("  ✓ ", style="green")
-        commit_summary.append(f"{committed_path}\\n")
+        commit_summary.append(f"{committed_path}\n")
 
     console.print(
         Panel(
@@ -288,7 +288,7 @@ def run_commit_suggestion_workflow(
     except (GitPushError, GitRunnerError) as error:
         console.print(
             Panel(
-                f"Commit saved locally. Push is unavailable:\\n{error}",
+                f"Commit saved locally. Push is unavailable:\n{error}",
                 title="GitMind | Push Unavailable",
                 border_style="yellow",
                 expand=False,
@@ -312,7 +312,7 @@ def run_commit_suggestion_workflow(
     except (GitPushError, GitRunnerError) as error:
         console.print(
             Panel(
-                f"Commit exists locally, but the push failed:\\n{error}",
+                f"Commit exists locally, but the push failed:\n{error}",
                 title="GitMind | Push Error",
                 border_style="red",
                 expand=False,
@@ -321,11 +321,11 @@ def run_commit_suggestion_workflow(
         return
 
     push_summary = Text()
-    push_summary.append("Push completed successfully.\\n\\n", style="bold green")
+    push_summary.append("Push completed successfully.\n\n", style="bold green")
     push_summary.append("Remote: ", style="bold")
-    push_summary.append(f"{push_result.remote_name}\\n")
+    push_summary.append(f"{push_result.remote_name}\n")
     push_summary.append("Branch: ", style="bold")
-    push_summary.append(f"{push_result.branch}\\n")
+    push_summary.append(f"{push_result.branch}\n")
     push_summary.append("Commit: ", style="bold")
     push_summary.append(f"{push_result.commit_hash[:12]}")
 
