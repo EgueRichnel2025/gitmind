@@ -22,7 +22,7 @@ dev = [
 ]
 
 [project.scripts]
-gitmind = "gitmind.cli:app"
+git-mind = "gitmind.cli:app"
 
 [tool.setuptools.packages.find]
 where = ["src"]
