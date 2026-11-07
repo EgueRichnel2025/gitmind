@@ -30,3 +30,20 @@ class GitCommitSelectionHasUnstagedChangesError(GitCommitError):
     def __init__(self, path: str) -> None:
         self.path = path
         super().__init__(f"Selected file has additional unstaged changes: {path}")
+
+
+class GitCommitSelectionUnmergedError(GitCommitError):
+    """Raised when a selected file has unresolved merge conflicts."""
+
+    def __init__(self, path: str) -> None:
+        self.path = path
+        super().__init__(f"Selected file has unresolved merge conflicts: {path}")
+
+
+class UnsafeGitCommitPathError(GitCommitError):
+    """Raised when a selected path is unsafe for a Git operation."""
+
+    def __init__(self, path: str, reason: str) -> None:
+        self.path = path
+        self.reason = reason
+        super().__init__(f"Unsafe selected file path {path!r}: {reason}")
