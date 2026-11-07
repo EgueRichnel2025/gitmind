@@ -312,6 +312,7 @@ def test_cli_creates_commit_after_explicit_confirmation(
 
     assert result.exit_code == 0, result.output
     assert "Commit Completed" in result.output
+    assert r"\n" not in result.output
     assert SUGGESTIONS[0] in result.output
 
     assert (
@@ -520,7 +521,9 @@ def test_cli_pushes_commit_after_explicit_push_confirmation(
 
     assert result.exit_code == 0, result.output
     assert "Commit Completed" in result.output
+    assert r"\n" not in result.output
     assert "Push Completed" in result.output
+    assert r"\n" not in result.output
 
     local_commit = run_git(tmp_path, "rev-parse", "HEAD").strip()
 
@@ -575,6 +578,7 @@ def test_cli_declining_push_keeps_commit_local(
 
     assert result.exit_code == 0, result.output
     assert "Commit Completed" in result.output
+    assert r"\n" not in result.output
     assert "Push declined" in result.output
 
     local_commit = run_git(tmp_path, "rev-parse", "HEAD").strip()
