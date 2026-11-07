@@ -63,7 +63,7 @@ def test_staging_result_requires_selected_paths_in_affected_paths() -> None:
 
 
 def test_staging_result_rejects_invalid_path_types() -> None:
-    with pytest.raises(TypeError, match="Paths must be strings"):
+    with pytest.raises(TypeError, match="All paths must be strings"):
         GitStagingResult(
             selected_paths=(123,),  # type: ignore[arg-type]
             affected_paths=("app.py",),
