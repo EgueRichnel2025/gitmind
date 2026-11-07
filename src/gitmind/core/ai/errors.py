@@ -31,3 +31,11 @@ class AITimeoutError(AIConnectionError):
 
 class AIResponseError(AIProviderError):
     """Raised when the provider returns an invalid response."""
+
+
+class AIContextError(ValueError):
+    """Raised when commit analysis cannot be converted into a valid prompt."""
+
+
+class AIContextTooLargeError(AIContextError):
+    """Raised when the prompt metadata exceeds the configured context budget."""
