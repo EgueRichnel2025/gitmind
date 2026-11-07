@@ -25,6 +25,8 @@ from gitmind.core.analysis.models import (
     FileAnalysisSnapshot,
 )
 from gitmind.core.analysis.service import FileAnalysisService
+from gitmind.core.git.commit import GitCommitService
+from gitmind.core.git.commit_errors import GitCommitError
 from gitmind.core.git.errors import GitRepositoryNotFoundError, GitRunnerError
 from gitmind.core.git.repository import RepositoryDetector
 from gitmind.core.git.runner import GitRunner
@@ -39,6 +41,7 @@ from gitmind.core.selection.models import (
     SelectableFile,
 )
 from gitmind.core.selection.service import FileSelectionService
+from gitmind.ui.commit_confirmation import CommitConfirmationTerminalUI
 from gitmind.ui.commit_suggestions import CommitSuggestionTerminalUI
 from gitmind.ui.selection import SelectionTerminalUI
 from gitmind.ui.staging_confirmation import StagingConfirmationTerminalUI
@@ -135,6 +138,9 @@ def build_staged_selection(
 def run_commit_suggestion_workflow(
     console: Console,
     analysis: FileAnalysisSnapshot,
+    repository_root: Path,
+    selection: FileSelectionSnapshot,
+    runner: GitRunner,
 ) -> None:
     """Generate and interactively select AI commit message suggestions."""
     try:
@@ -209,8 +215,62 @@ def run_commit_suggestion_workflow(
         )
     )
 
+    confirmation_ui = CommitConfirmationTerminalUI(
+        selection=selection,
+        message=selected_message,
+        console=console,
+    )
+
+    if not confirmation_ui.run():
+        console.print(
+            "[yellow]Commit declined. Selected files remain staged. No commit was created.[/yellow]"
+        )
+        return
+
+    try:
+        commit_result = GitCommitService(
+            repository_root=repository_root,
+            runner=runner,
+        ).commit(
+            selection=selection,
+            message=selected_message,
+        )
+
+    except (GitCommitError, GitRunnerError) as error:
+        console.print(
+            Panel(
+                f"Unable to create the commit:\\n{error}\\n\\n"
+                "Inspect the repository status before continuing.",
+                title="GitMind | Commit Error",
+                border_style="red",
+                expand=False,
+            )
+        )
+        console.print(
+            "[yellow]The commit was not completed. "
+            "Review the staged changes before retrying.[/yellow]"
+        )
+        return
+
+    commit_summary = Text()
+    commit_summary.append("Commit created successfully.\\n\\n", style="bold green")
+    commit_summary.append("Commit: ", style="bold")
+    commit_summary.append(f"{commit_result.commit_hash[:12]}\\n", style="cyan")
+    commit_summary.append("Message: ", style="bold")
+    commit_summary.append(f"{commit_result.message}\\n\\n")
+    commit_summary.append("Committed files:\\n", style="bold")
+
+    for committed_path in commit_result.committed_paths:
+        commit_summary.append("  ✓ ", style="green")
+        commit_summary.append(f"{committed_path}\\n")
+
     console.print(
-        "[dim]Message selected. Files remain staged. No commit or push was performed.[/dim]"
+        Panel(
+            commit_summary,
+            title="GitMind | Commit Completed",
+            border_style="green",
+            expand=False,
+        )
     )
 
 
@@ -365,7 +425,13 @@ def run_selection_workflow() -> None:
 
     display_analysis_summary(console, analysis)
 
-    run_commit_suggestion_workflow(console, analysis)
+    run_commit_suggestion_workflow(
+        console=console,
+        analysis=analysis,
+        repository_root=repository.root,
+        selection=staged_selection,
+        runner=runner,
+    )
 
 
 @app.callback()
