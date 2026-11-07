@@ -19,6 +19,7 @@ class OpenAICompatibleProvider:
     """Send chat completion requests to an OpenAI-compatible API."""
 
     MAX_RESPONSE_BYTES = 2_000_000
+    USER_AGENT = "GitMind/0.1.0"
 
     def __init__(self, config: AIProviderConfig) -> None:
         if not isinstance(config, AIProviderConfig):
@@ -60,6 +61,7 @@ class OpenAICompatibleProvider:
                 "Authorization": f"Bearer {self._config.api_key}",
                 "Content-Type": "application/json",
                 "Accept": "application/json",
+                "User-Agent": self.USER_AGENT,
             },
             method="POST",
         )

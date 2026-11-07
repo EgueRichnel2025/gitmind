@@ -123,6 +123,7 @@ def test_provider_sends_correct_http_request(
     assert request.method == "POST"
     assert request.full_url == ("https://api.groq.com/openai/v1/chat/completions")
     assert request.get_header("Authorization") == f"Bearer {API_KEY}"
+    assert request.get_header("User-agent") == "GitMind/0.1.0"
     assert request.get_header("Content-type") == "application/json"
     assert payload["model"] == "test-model"
     assert payload["messages"] == [
