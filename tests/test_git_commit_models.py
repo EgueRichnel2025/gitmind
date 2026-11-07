@@ -11,7 +11,6 @@ from gitmind.core.git.commit_errors import (
 )
 from gitmind.core.git.commit_models import GitCommitResult
 
-
 VALID_HASH = "a" * 40
 
 
