@@ -9,6 +9,14 @@ from rich.table import Table
 from rich.text import Text
 
 from gitmind import __version__
+from gitmind.core.ai import (
+    AIConfigurationError,
+    AIContextError,
+    AIProviderConfig,
+    AIProviderError,
+    CommitSuggestionService,
+    OpenAICompatibleProvider,
+)
 from gitmind.core.analysis.content import (
     FileContentReadError,
     UnsafeFilePathError,
@@ -21,6 +29,7 @@ from gitmind.core.git.runner import GitRunner
 from gitmind.core.git.status_service import GitStatusService
 from gitmind.core.git.summary import GitStatusSummarizer
 from gitmind.core.selection.service import FileSelectionService
+from gitmind.ui.commit_suggestions import CommitSuggestionTerminalUI
 from gitmind.ui.selection import SelectionTerminalUI
 
 app = typer.Typer(
@@ -62,6 +71,85 @@ def display_analysis_summary(
 
         for file_analysis in snapshot.files:
             console.print(f"  [dim]• {file_analysis.path}[/dim]")
+
+
+def run_commit_suggestion_workflow(
+    console: Console,
+    analysis: FileAnalysisSnapshot,
+) -> None:
+    """Generate and interactively select AI commit message suggestions."""
+    try:
+        config = AIProviderConfig.from_env()
+
+    except AIConfigurationError as error:
+        console.print(
+            Panel(
+                (
+                    "AI commit suggestions are not configured.\n\n"
+                    f"{error}\n\n"
+                    "Configure these environment variables in Git Bash:\n"
+                    "  GITMIND_AI_API_KEY\n"
+                    "  GITMIND_AI_MODEL\n\n"
+                    "GITMIND_AI_BASE_URL is optional. "
+                    "Its default value points to Groq."
+                ),
+                title="GitMind | AI Configuration",
+                border_style="yellow",
+                expand=False,
+            )
+        )
+        console.print("[yellow]AI suggestions skipped. Repository unchanged.[/yellow]")
+        return
+
+    provider = OpenAICompatibleProvider(config)
+    service = CommitSuggestionService(provider=provider)
+
+    try:
+        suggestions = service.generate(analysis)
+
+    except (AIContextError, AIProviderError) as error:
+        console.print(
+            Panel(
+                f"Unable to generate commit suggestions:\n{error}",
+                title="GitMind | AI Error",
+                border_style="red",
+                expand=False,
+            )
+        )
+        console.print("[yellow]No commit message was selected. Repository unchanged.[/yellow]")
+        return
+
+    console.print(
+        Panel.fit(
+            "Three commit message suggestions generated successfully.",
+            title="GitMind | AI Generation",
+            border_style="green",
+        )
+    )
+
+    suggestion_ui = CommitSuggestionTerminalUI(
+        suggestions=suggestions,
+        console=console,
+    )
+
+    selected_message = suggestion_ui.run()
+
+    if selected_message is None:
+        console.print("[yellow]Suggestion selection cancelled. Repository unchanged.[/yellow]")
+        return
+
+    console.print(
+        Panel(
+            Text(selected_message, style="bold green"),
+            title="GitMind | Selected Commit Message",
+            border_style="green",
+            expand=False,
+        )
+    )
+
+    console.print(
+        "[dim]Message selected only. No Git staging, commit or push operation was performed.[/dim]"
+    )
 
 
 def run_selection_workflow() -> None:
@@ -140,6 +228,8 @@ def run_selection_workflow() -> None:
         Panel.fit(
             f"[bold green]Selection confirmed: {count} {label}.[/bold green]\n"
             "Starting read-only file analysis.\n"
+            "Selected change context will be sent to your configured AI provider "
+            "to generate commit suggestions.\n"
             "[dim]No Git staging or commit operation will be performed.[/dim]",
             title="GitMind",
             border_style="green",
@@ -165,6 +255,8 @@ def run_selection_workflow() -> None:
         raise typer.Exit(code=1) from error
 
     display_analysis_summary(console, analysis)
+
+    run_commit_suggestion_workflow(console, analysis)
 
 
 @app.callback()

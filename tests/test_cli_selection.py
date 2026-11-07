@@ -3,12 +3,21 @@
 import subprocess
 from pathlib import Path
 
+import pytest
 from typer.testing import CliRunner
 
 from gitmind.cli import app
 from gitmind.ui.selection import SelectionTerminalUI
 
 runner = CliRunner()
+
+
+@pytest.fixture(autouse=True)
+def disable_live_ai_configuration(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Prevent CLI tests from making real AI provider requests."""
+    monkeypatch.delenv("GITMIND_AI_API_KEY", raising=False)
+    monkeypatch.delenv("GITMIND_AI_MODEL", raising=False)
+    monkeypatch.delenv("GITMIND_AI_BASE_URL", raising=False)
 
 
 def initialize_repository(path: Path) -> None:
