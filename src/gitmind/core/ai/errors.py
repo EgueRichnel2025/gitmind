@@ -39,3 +39,7 @@ class AIContextError(ValueError):
 
 class AIContextTooLargeError(AIContextError):
     """Raised when the prompt metadata exceeds the configured context budget."""
+
+
+class AIInvalidSuggestionsError(AIResponseError):
+    """Raised when generated commit suggestions are invalid."""

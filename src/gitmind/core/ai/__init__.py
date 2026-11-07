@@ -7,6 +7,7 @@ from gitmind.core.ai.errors import (
     AIConnectionError,
     AIContextError,
     AIContextTooLargeError,
+    AIInvalidSuggestionsError,
     AIProviderError,
     AIRateLimitError,
     AIRequestError,
@@ -22,6 +23,10 @@ from gitmind.core.ai.prompts import (
     CommitPromptBuilder,
 )
 from gitmind.core.ai.provider import OpenAICompatibleProvider
+from gitmind.core.ai.service import (
+    CommitSuggestionService,
+    TextGenerationProvider,
+)
 
 __all__ = [
     "AIAuthenticationError",
@@ -29,6 +34,7 @@ __all__ = [
     "AIConnectionError",
     "AIContextError",
     "AIContextTooLargeError",
+    "AIInvalidSuggestionsError",
     "AIProviderConfig",
     "AIProviderError",
     "AIRateLimitError",
@@ -38,6 +44,8 @@ __all__ = [
     "CommitPrompt",
     "CommitPromptBuilder",
     "CommitSuggestion",
+    "CommitSuggestionService",
     "CommitSuggestionSet",
     "OpenAICompatibleProvider",
+    "TextGenerationProvider",
 ]
