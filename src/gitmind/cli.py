@@ -33,11 +33,12 @@ from gitmind.ui.commit_suggestions import CommitSuggestionTerminalUI
 from gitmind.ui.selection import SelectionTerminalUI
 
 app = typer.Typer(
-    name="gitmind",
+    name="git-mind",
     help="An AI-powered assistant for your Git workflow.",
     no_args_is_help=False,
     invoke_without_command=True,
     add_completion=False,
+    context_settings={"help_option_names": ["-h", "--help"]},
 )
 
 
