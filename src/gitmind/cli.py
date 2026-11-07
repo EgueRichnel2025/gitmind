@@ -28,6 +28,8 @@ from gitmind.core.analysis.service import FileAnalysisService
 from gitmind.core.git.commit import GitCommitService
 from gitmind.core.git.commit_errors import GitCommitError
 from gitmind.core.git.errors import GitRepositoryNotFoundError, GitRunnerError
+from gitmind.core.git.push import GitPushService
+from gitmind.core.git.push_errors import GitPushError
 from gitmind.core.git.repository import RepositoryDetector
 from gitmind.core.git.runner import GitRunner
 from gitmind.core.git.staging import GitStagingService
@@ -43,6 +45,7 @@ from gitmind.core.selection.models import (
 from gitmind.core.selection.service import FileSelectionService
 from gitmind.ui.commit_confirmation import CommitConfirmationTerminalUI
 from gitmind.ui.commit_suggestions import CommitSuggestionTerminalUI
+from gitmind.ui.push_confirmation import PushConfirmationTerminalUI
 from gitmind.ui.selection import SelectionTerminalUI
 from gitmind.ui.staging_confirmation import StagingConfirmationTerminalUI
 
@@ -268,6 +271,68 @@ def run_commit_suggestion_workflow(
         Panel(
             commit_summary,
             title="GitMind | Commit Completed",
+            border_style="green",
+            expand=False,
+        )
+    )
+
+    # Validate the push destination before asking the user.
+    push_service = GitPushService(
+        repository_root=repository_root,
+        runner=runner,
+    )
+
+    try:
+        current_branch = push_service.validate_target()
+
+    except (GitPushError, GitRunnerError) as error:
+        console.print(
+            Panel(
+                f"Commit saved locally. Push is unavailable:\\n{error}",
+                title="GitMind | Push Unavailable",
+                border_style="yellow",
+                expand=False,
+            )
+        )
+        return
+
+    push_confirmation_ui = PushConfirmationTerminalUI(
+        commit=commit_result,
+        branch=current_branch,
+        console=console,
+    )
+
+    if not push_confirmation_ui.run():
+        console.print("[yellow]Push declined. The commit remains available locally.[/yellow]")
+        return
+
+    try:
+        push_result = push_service.push()
+
+    except (GitPushError, GitRunnerError) as error:
+        console.print(
+            Panel(
+                f"Commit exists locally, but the push failed:\\n{error}",
+                title="GitMind | Push Error",
+                border_style="red",
+                expand=False,
+            )
+        )
+        return
+
+    push_summary = Text()
+    push_summary.append("Push completed successfully.\\n\\n", style="bold green")
+    push_summary.append("Remote: ", style="bold")
+    push_summary.append(f"{push_result.remote_name}\\n")
+    push_summary.append("Branch: ", style="bold")
+    push_summary.append(f"{push_result.branch}\\n")
+    push_summary.append("Commit: ", style="bold")
+    push_summary.append(f"{push_result.commit_hash[:12]}")
+
+    console.print(
+        Panel(
+            push_summary,
+            title="GitMind | Push Completed",
             border_style="green",
             expand=False,
         )
